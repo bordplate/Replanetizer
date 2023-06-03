@@ -13,6 +13,7 @@ using LibReplanetizer;
 using LibReplanetizer.LevelObjects;
 using LibReplanetizer.Models;
 using OpenTK.Mathematics;
+using Replanetizer.Frames;
 using Replanetizer.Utils;
 using static LibReplanetizer.DataFunctions;
 
@@ -51,7 +52,8 @@ namespace Replanetizer.MemoryHook
                     ADDRESSES = new MemoryAddresses
                     {
                         moby = 0x300A390A0,
-                        camera = 0x300951500
+                        camera = 0x300951500,
+                        levelFrames = 0x300a10710,
                     };
                     break;
                 default:
@@ -69,6 +71,19 @@ namespace Replanetizer.MemoryHook
             }
         }
 
+        public int LevelFrames()
+        {
+            if (!hookWorking) return -1;
+            if (ADDRESSES == null) return -1;
+
+            int bytesRead = 0;
+            byte[] buffer = new byte[0x4];
+
+            ReadProcessMemory(PROCESS_HANDLE, ADDRESSES.levelFrames, buffer, buffer.Length, ref bytesRead);
+
+            return ReadInt(buffer, 0);
+        }
+
         public void UpdateCamera(Camera camera)
         {
             if (!hookWorking) return;
@@ -80,7 +95,7 @@ namespace Replanetizer.MemoryHook
             camera.rotation = new Vector3(ReadFloat(camBfr, 0x10), ReadFloat(camBfr, 0x14), ReadFloat(camBfr, 0x18) - (float) (Math.PI / 2));
         }
 
-        public void UpdateMobys(List<Moby> levelMobs, List<Model> models)
+        public void UpdateMobys(List<Moby> levelMobs, List<Model> models, LevelFrame levelFrame)
         {
             if (!hookWorking) return;
             if (ADDRESSES == null) return;
@@ -97,14 +112,36 @@ namespace Replanetizer.MemoryHook
 
             ReadProcessMemory(PROCESS_HANDLE, 0x300000000 + firstMoby, mobys, mobys.Length, ref bytesRead);
 
-            while (levelMobs.Count < mobys.Length / 0x100)
-            {
-                levelMobs.Add(new Moby());
-            }
+            int lastIndex = 0;
 
-            for (int i = 0; i < mobys.Length / 0x100; i++)
+            for (int i = 0; i < levelMobs.Count; i++)
             {
                 levelMobs[i].UpdateFromMemory(mobys, i * 0x100, models);
+                lastIndex = i;
+            }
+
+            while (levelMobs.Count < mobys.Length / 0x100)
+            {
+                int oClass = ReadUshort(mobys, (lastIndex * 0x100) + 0xA6);
+
+                Moby moby = null;
+
+                if (levelFrame.uniqueMobys.ContainsKey(oClass))
+                {
+                    moby = (Moby)levelFrame.uniqueMobys[oClass].Clone();
+                } else
+                {
+                    moby = new Moby();
+                }
+
+                moby.UpdateFromMemory(mobys, lastIndex * 0x100, models);
+
+                moby.drawDistance = 0xff;
+
+                levelMobs.Add(moby);
+                levelFrame.mobiesBuffers.Add(new RenderableBuffer(moby, RenderedObjectType.Moby, levelFrame.level.mobs.Count - 1, levelFrame.level, levelFrame.textureIds));
+
+                lastIndex += 1;
             }
         }
 

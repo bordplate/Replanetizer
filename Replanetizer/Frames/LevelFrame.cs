@@ -56,6 +56,10 @@ namespace Replanetizer.Frames
 
         private float movingAvgFrametime = 1.0f;
 
+        private int levelFrames = -1;
+
+        public Dictionary<int, Moby> uniqueMobys = new Dictionary<int, Moby>();
+
         private Matrix4 view { get; set; }
 
         public readonly Selection selectedObjects;
@@ -124,6 +128,16 @@ namespace Replanetizer.Frames
             OnResize();
 
             LoadLevel(level);
+
+            foreach (var moby in level.mobs)
+            {
+                if (!uniqueMobys.ContainsKey(moby.mobyID))
+                {
+                    uniqueMobys[moby.mobyID] = (Moby)moby.Clone();
+                }
+            }
+
+            TryRpcs3Hook();
         }
 
         public static bool FrameMustClose(Frame frame)
@@ -483,6 +497,8 @@ namespace Replanetizer.Frames
             RenderTextOverlay(deltaTime);
             UpdateWindowSize();
             Tick(deltaTime);
+
+            invalidate = true;
 
             if (invalidate)
             {
@@ -1437,7 +1453,19 @@ namespace Replanetizer.Frames
 
             if (enableMoby)
             {
-                if (hook != null) hook.UpdateMobys(level.mobs, level.mobyModels);
+                if (hook != null)
+                {
+                    int frames = hook.LevelFrames();
+
+                    if (levelFrames == -1 || levelFrames > frames)
+                    { 
+                        DeleteObject(level.mobs.Reverse<Moby>().ToArray());
+                    }
+
+                    levelFrames = frames;
+
+                    hook.UpdateMobys(level.mobs, level.mobyModels, this);
+                }
 
                 GL.Uniform1(shaderIDTable.uniformLevelObjectType, (int) RenderedObjectType.Moby);
                 foreach (RenderableBuffer buffer in mobiesBuffers)

@@ -11,5 +11,6 @@ namespace Replanetizer.MemoryHook
     {
         public long moby;
         public long camera;
+        internal long levelFrames;
     }
 }
